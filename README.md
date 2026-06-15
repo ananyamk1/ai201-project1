@@ -178,10 +178,10 @@ Attribution is built in code, not left up to the model. After the answer comes b
 
 These are real outputs from the system (the Sources block is built in code, so it always shows up). Wording shifts a little between runs since the model runs at a low temperature, but the grounding and sources stay the same.
 
-**Example 1 — "What hidden fees or management issues should I look out for at Cullen Oaks?"**
+Example 1 — "What hidden fees or management issues should I look out for at Cullen Oaks?"
 > At Cullen Oaks, you should look out for surprise monthly room checks, unauthorized gathering policies that can lead to eviction, and surprise fees [1]. The management has been described as naggy and negligent, with a tendency to threaten residents with eviction for small offenses [1]. Additionally, utilities are not included in the rent, and you may be charged for electricity bills over $20 [2]. The complex also has issues with paper-thin walls, pests like roaches and gnats, and nonexistent wifi [4].
 >
-> **Sources:**
+> Sources:
 > [1],[2],[4] ApartmentRatings — Cullen Oaks resident reviews
 >      https://www.apartmentratings.com/tx/houston/cullen-oaks_713748370777004/
 > [3] Reddit — Graduate Housing Options and Local Commuter Reality
@@ -189,16 +189,16 @@ These are real outputs from the system (the Sources block is built in code, so i
 > [5] Reddit — Graduate Student & Off-Campus Family Housing Realities
 >      https://www.reddit.com/r/UniversityOfHouston/comments/18d0fq0/
 
-**Example 2 — "Is Eastwood or the Med Center safe to commute from without a car?"**
+Example 2 — "Is Eastwood or the Med Center safe to commute from without a car?"
 > According to [1], Eastwood is considered safe by one resident who has lived there for 4 years without incident, and it's about a 3-minute metro ride to campus. As for the Med Center, [2] says it's "super safe" in a practical sense, especially in gated communities, though traffic can be a pain.
 >
-> **Sources:**
+> Sources:
 > [1],[2] Reddit — Inner-Loop Spatial Border & Neighborhood Safety Matrix
 >      https://www.reddit.com/r/UniversityOfHouston/comments/1bbuu7m/
 > [3],[5] Reddit — Safe Off-Campus Recommendations for International Students
 >      https://www.reddit.com/r/UniversityOfHouston/comments/1tfko9d/
 
-**Out-of-scope query — "Which grocery stores near UH deliver, and do they offer student discounts?"**
+Out-of-scope query: "Which grocery stores near UH deliver, and do they offer student discounts?"**
 > I don't have enough information on that.
 
 My corpus has nothing about grocery delivery, so instead of making up a plausible answer the system returns the exact refusal line and attaches **no sources** (I suppress the Sources block on a refusal so a "no info" answer never gets fake citations).
@@ -220,19 +220,19 @@ The interface is a Gradio web app (`python app.py`, opens at http://localhost:78
 - **Answer** — the grounded answer, with inline `[n]` citations and the code-built **Sources** list (source name + URL) appended at the bottom.
 - **Retrieved context (what the answer is grounded in)** — an expandable drop-down that shows the exact chunks that were retrieved, each with its distance score and source document, so you can see what the answer was built from.
 
-**Sample interaction transcript:**
-> **Your question:** What hidden fees or management issues should I look out for at Cullen Oaks?
-> **top-k:** 5
-> *(click Ask)*
+Extra:
+> Your question: What hidden fees or management issues should I look out for at Cullen Oaks?
+> top-k: 5
+> (click Ask)
 >
-> **Answer:** At Cullen Oaks, you should look out for surprise monthly room checks, unauthorized gathering policies that can lead to eviction, and surprise fees [1]. Utilities are not included, and you may be charged for electricity over $20 [2]. The complex also has paper-thin walls, pests, and nonexistent wifi [4].
+> Answer: At Cullen Oaks, you should look out for surprise monthly room checks, unauthorized gathering policies that can lead to eviction, and surprise fees [1]. Utilities are not included, and you may be charged for electricity over $20 [2]. The complex also has paper-thin walls, pests, and nonexistent wifi [4].
 >
-> **Sources:**
+> Sources:
 > [1],[2],[4] ApartmentRatings — Cullen Oaks resident reviews — https://www.apartmentratings.com/tx/houston/cullen-oaks_713748370777004/
 > [3] Reddit — Graduate Housing Options and Local Commuter Reality — https://www.reddit.com/r/UniversityOfHouston/comments/1fc3wam/
 > [5] Reddit — Graduate Student & Off-Campus Family Housing Realities — https://www.reddit.com/r/UniversityOfHouston/comments/18d0fq0/
 >
-> *(expand "Retrieved context")* → shows chunk [1] `distance=0.443` from `reviews_cullen_oaks`, chunk [2] `distance=0.452` from `reviews_cullen_oaks`, and so on.
+> (expand "Retrieved context") → shows chunk [1] `distance=0.443` from `reviews_cullen_oaks`, chunk [2] `distance=0.452` from `reviews_cullen_oaks`, and so on.
 
 ---
 
@@ -317,3 +317,53 @@ My plan said I'd scrape everything live with requests + BeautifulSoup, but that 
 - What I gave the AI: My Retrieval Approach section, my grounding requirement (answer only from retrieved chunks, refuse otherwise, always cite sources), the output format I wanted, and a basic Gradio skeleton, and asked it to wire up generation on Groq's llama-3.3-70b plus the web UI.
 - What it produced: generate.py (the prompt building + Groq call) and app.py (the Gradio interface).
 - What I changed or overrode: I made source attribution programmatic instead of trusting the model to cite, the Sources list is built in code from the retrieved chunks' metadata, so it can't be skipped or made up. I also tightened the system prompt to force the exact refusal line, and fixed a dependency clash where installing gradio 6 broke my embedding model (it forced a huggingface-hub version that transformers couldn't use) by pinning gradio 5 instead.
+
+---
+
+## Stretch Features
+
+I added four stretch features on top of the base system. All four are toggleable in the Gradio app (the **Ask** tab has a retrieval-mode radio and a source filter; the **Chat** tab has memory) and runnable from the command line.
+
+### 1. Hybrid search (BM25 + vector)
+
+The plain vector search misses things when the query wording doesn't match the source wording. So I added a keyword ranker (BM25, via `rank-bm25`) alongside the vector search and fused the two rankings with **Reciprocal Rank Fusion (RRF)**: each chunk gets a score of `sum over methods of 1 / (60 + its_rank_in_that_method)`, and I sort by that. RRF is rank-based, which sidesteps the fact that cosine distance and BM25 scores are on totally different scales and can't just be added. Code is in `src/hybrid.py` (`python -m src.hybrid "..."`), and the app has a vector/hybrid toggle.
+
+**Comparison on 3 queries (vector-only vs BM25-only vs hybrid):**
+
+| Query | Vector top result | BM25 top result | Hybrid top-3 | Winner |
+|---|---|---|---|---|
+| "student Q-Card 50% METRO discount" | Q-Card 50%-off chunk | same Q-Card chunk | both Q-Card chunks up top | **Tie** — both nail it (keyword + meaning match) |
+| "What hidden fees should I expect at Cullen Oaks?" | 2 Cullen Oaks reviews, but #3 is an off-target UH **$10 application fee** | 2 Cullen Oaks reviews + a slightly off Reddit "open spot" | the two real Cullen Oaks reviews, drops the $10-app-fee noise | **Hybrid** — cleaner top-3, no false positive |
+| "is it safe to live near campus without a car" (vague) | coherent safety chunks | adds keyword noise ("hand over money without a struggle") | a mix | **Vector** — pure semantic wins on a vague query |
+
+I also checked "Cougar Ride security escort": BM25 surfaces the official UHPD escort chunk that pure vector ranks lower. Takeaway: hybrid clearly helps on keyword / proper-noun queries and trims some false positives, while pure vector is better on vague paraphrased queries. I kept vector as the default with hybrid as a toggle.
+
+### 2. Chunking strategy comparison
+
+I re-chunked the same cleaned documents three ways, embedded each set, and ran the same 5 queries against all three, measuring the top-1 cosine distance (lower = closer). Code: `src/compare_chunking.py`.
+
+| Query (top-1 distance) | A: 250/60 segment-aware (current) | B: 120/30 segment-aware (smaller) | C: 500-word, merges segments |
+|---|---|---|---|
+| Med Center safe to commute? | 0.378 | 0.378 | 0.619 |
+| Cullen Oaks hidden fees | 0.477 | **0.435** | 0.616 |
+| Afford Midtown/Montrose | 0.369 | 0.369 | 0.509 |
+| Get home after dark | 0.665 | 0.629 | 0.686 |
+| Lofts vs off-campus | 0.351 | 0.360 | 0.388 |
+| **# chunks** | 231 | 271 | 27 |
+
+**Analysis:** strategy **C (big 500-word chunks that merge different people's comments) is clearly the worst** — its distances jump to ~0.6+ because each chunk blends multiple people and topics, so the embedding is diluted and matches any specific query less precisely. That's direct evidence for the segment-aware decision in my planning ("never merge two people's opinions"). Strategy **B (smaller 120/30) is marginally tighter** on review-heavy queries like Cullen Oaks (0.435 vs 0.477) because shorter chunks are more focused, but it makes more chunks and gives the LLM less context per chunk. My current **A (250/60)** is the best balance of retrieval precision and enough context to generate from. Also note the "get home after dark" query stays high-distance across *all three* strategies — confirming that failure is an embedding/vocabulary issue, not a chunking one.
+
+### 3. Metadata filtering
+
+Every chunk is stored with its `source` type in metadata, so I can filter retrieval to one source. In code it's ChromaDB's `where={"source": ...}` filter on the vector path plus an equivalent filter on the BM25 candidates (`retrieve(query, k, source=...)` and `hybrid_retrieve(...)`); in the app it's the "Filter by source" dropdown. Visible effect: filtering "How do I get home safely after dark?" to **Official UH** surfaces the UHPD security-escort and Cougar Ride chunks at the top (which the unfiltered search buries under Reddit chatter), and filtering the Cullen Oaks question to **ApartmentRatings** returns only resident reviews — no Reddit or transit chunks.
+
+### 4. Conversational memory
+
+The **Chat** tab keeps the conversation so a follow-up can lean on earlier turns (`answer_chat()` in `src/generate.py`). It does two things with the history: it builds the retrieval query from the previous user turn plus the new message (so the follow-up retrieves the right context), and it passes the recent turns to the model so references resolve. Sample exchange:
+
+> **User:** Can I afford a 1-bed apartment in Midtown on a UH grad stipend?
+> **Bot:** ...most grad students spend around $1,400 on rent... [1]
+> **User:** what about with a roommate?  *(never repeats "Midtown" or "rent")*
+> **Bot:** Splitting a place could help — a 2-bed at Cullen Oaks runs $1,914, about $807 per person [4]...
+
+The second answer correctly stays on affordability/splitting rent, which only makes sense if it remembered the first turn — not just topic overlap.

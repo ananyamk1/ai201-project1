@@ -180,3 +180,14 @@ all-MiniLM-L6-v2, and stores vectors + source metadata in ChromaDB, and aslo a r
 
 **Milestone 5 — Generation and interface:**
 Here I gave the AI my Retrieval Approach section and the pipeline diagram again, plus my grounding requirement spelled out (answer only from the retrieved chunks, refuse when they don't cover the question, and always attribute sources), the output format I wanted (an answer followed by a source list), and the basic Gradio skeleton I planned to use. I asked it to wire the whole thing together on Groq's llama-3.3-70b-versatile and hand me back the generation function plus the Gradio app. Before I ran anything I read the generated code carefully to make sure the system prompt actually forces grounding instead of just suggesting it, and that the source list gets built in code from the retrieved chunks' metadata rather than being left to the model to remember on its own. Then I tested it end to end on my five eval questions, traced specific facts (like the $20 "convenience" fee at Cullen Oaks) back to the exact review chunk to prove the answer couldn't have come from the model's training data, and deliberately asked something my corpus doesn't cover to confirm it replies "I don't have enough information on that" instead of inventing a plausible-sounding answer.
+
+---
+
+## Stretch Features (added after the base system)
+
+After the base system was working, I added four stretch features. Full writeups, comparisons, and results are in the README's "Stretch Features" section; in short:
+
+1. **Hybrid search** — BM25 keyword ranking fused with the vector search via Reciprocal Rank Fusion (`src/hybrid.py`), with a vector/hybrid toggle in the app. Compared against vector-only and BM25-only on 3 queries.
+2. **Chunking strategy comparison** — re-chunked the same docs 3 ways (250/60, 120/30, and a 500-word strategy that merges segments), embedded each, and compared top-1 retrieval distance on the 5-query set (`src/compare_chunking.py`).
+3. **Metadata filtering** — filter retrieval to one source type via ChromaDB's `where` filter (and an equivalent filter on the BM25 side); exposed as a dropdown in the app.
+4. **Conversational memory** — a Chat tab that uses prior turns so a follow-up like "what about with a roommate?" is understood in context (`answer_chat()` in `src/generate.py`).

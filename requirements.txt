@@ -18,5 +18,8 @@ playwright-stealth>=2.0
 gradio>=5,<6
 huggingface-hub<1.0
 
+# Stretch feature: hybrid (BM25 + vector) retrieval
+rank-bm25>=0.2.2
+
 # Document ingestion — add if your documents/ folder contains .pdf files:
 # pdfplumber==0.11.4

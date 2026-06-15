@@ -59,7 +59,7 @@ def _print(query: str, hits: list[dict]) -> None:
     print(f"\nQuery: {query!r}  (top {len(hits)})")
     for rank, h in enumerate(hits, 1):
         print("\n" + "-" * 70)
-        print(f"#{rank}  score={h['score']}  "
+        print(f"#{rank}  distance={h['distance']:.3f}  (cosine sim={h['score']})  "
               f"source: #{h['num']} {h['source']} ({h['doc_id']} seg {h['segment_index']})")
         print(textwrap.fill(h["text"], width=88))
 

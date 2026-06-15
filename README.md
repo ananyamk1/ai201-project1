@@ -128,6 +128,33 @@ If I were shipping this for real and money wasn't a concern, the two things I'd 
 
 ---
 
+## Retrieval Test Results
+
+<!-- At least 3 queries, each with the top returned chunks; for at least 2, why they're relevant. -->
+
+I tested retrieval by querying the vector store directly with `python -m src.retrieve "..."`. The scores are cosine **distance**, so lower = closer match.
+
+**Query 1: "What hidden fees should I expect at Cullen Oaks?"**
+- `distance=0.477` — `reviews_cullen_oaks` (#9 ApartmentRatings): *"...Cullen Oaks is a magical type of place where you can read all the brochures... and still be shocked. SURPRISE, monthly room checks!..."*
+- `distance=0.527` — `reviews_cullen_oaks` (#9 ApartmentRatings): *"...a million reasons why I would not recommend this so called 'apartment' complex... charged $200 for a tear in the carpet that was there when I moved in..."*
+- `distance=0.548` — `uh_parking_transit` (#8 Official UH): *"...You will be prompted to pay the $10 application fee..."*
+
+*Why these are relevant:* the top two are actual Cullen Oaks resident reviews that literally describe the surprise fees and charges the question is asking about — exactly the right source and the right topic. The third is weaker and a bit off (it's a UH Q-Card application fee, not a Cullen Oaks fee) — it got pulled in just because it shares the word "fee," which is the kind of tail noise that shows up at rank 3.
+
+**Query 2: "Is the Medical Center safe to commute from without a car?"**
+- `distance=0.378` — `reddit_05_safe_neighborhood` (#5 Reddit): *"As a resident, med center is super safe in a practical sense, especially if you live in a gated community. The traffic is more likely to be a bigger pain..."*
+- `distance=0.510` — `reddit_05_safe_neighborhood` (#5 Reddit): *"I know hella people who live near the med center. It's like a 10-15 min drive."*
+- `distance=0.569` — `reddit_05_safe_neighborhood` (#5 Reddit): *"My son commutes from Spring and the drive isn't bad."*
+
+*Why these are relevant:* all three come from the "safe neighborhood near UH" thread and speak directly to the Med Center being safe and how the commute feels — the #1 hit (distance 0.378, very close) answers both halves of the question, safety and commute, in one chunk.
+
+**Query 3: "Is it cheaper to live at the University Lofts or split an off-campus apartment?"**
+- `distance=0.361` — `reddit_01_grad_housing_bleak` (#1 Reddit): *"Story about the Lofts... most graduate students live off campus in districts like Montrose, Heights, EaDo, TMC, Midtown..."*
+- `distance=0.377` — `reddit_01_grad_housing_bleak` (#1 Reddit): *"Campus housing can be pretty expensive. I have a... house 3 blocks south of U of H with one large bedroom... Rent is $500/mn + one share of house bills."*
+- `distance=0.397` — `reddit_06_lofts_vs_offcampus` (#6 Reddit): *"I live in the lofts right now 1b1b furnished... I highly suggest it..."*
+
+---
+
 ## Grounded Generation
 
 <!-- Explain how your system enforces grounding — how does it prevent the LLM from answering
@@ -142,6 +169,70 @@ My system prompt doesn't just suggest using the documents, it forces it. I tell 
 
 **How source attribution is surfaced in the response:**
 Attribution is built in code, not left up to the model. After the answer comes back, my code takes the chunks that were actually retrieved, groups them by their source document, and builds a "Sources:" list from the metadata, where each source shows the [n] numbers it covered plus the real URL. So even if the model forgot to cite anything, the sources are still there and correct. On top of that I ask the model to cite [n] inline in its sentences, and the Gradio app has a drop-down that shows the exact chunks (with their distance scores) the answer was grounded in. One small thing I added: I don't attach sources to a refusal, so a "no info" answer never gets fake citations stapled to it.
+
+---
+
+## Example Responses
+
+<!-- At least 2 responses with source attribution visible, plus one out-of-scope refusal. -->
+
+These are real outputs from the system (the Sources block is built in code, so it always shows up). Wording shifts a little between runs since the model runs at a low temperature, but the grounding and sources stay the same.
+
+**Example 1 — "What hidden fees or management issues should I look out for at Cullen Oaks?"**
+> At Cullen Oaks, you should look out for surprise monthly room checks, unauthorized gathering policies that can lead to eviction, and surprise fees [1]. The management has been described as naggy and negligent, with a tendency to threaten residents with eviction for small offenses [1]. Additionally, utilities are not included in the rent, and you may be charged for electricity bills over $20 [2]. The complex also has issues with paper-thin walls, pests like roaches and gnats, and nonexistent wifi [4].
+>
+> **Sources:**
+> [1],[2],[4] ApartmentRatings — Cullen Oaks resident reviews
+>      https://www.apartmentratings.com/tx/houston/cullen-oaks_713748370777004/
+> [3] Reddit — Graduate Housing Options and Local Commuter Reality
+>      https://www.reddit.com/r/UniversityOfHouston/comments/1fc3wam/
+> [5] Reddit — Graduate Student & Off-Campus Family Housing Realities
+>      https://www.reddit.com/r/UniversityOfHouston/comments/18d0fq0/
+
+**Example 2 — "Is Eastwood or the Med Center safe to commute from without a car?"**
+> According to [1], Eastwood is considered safe by one resident who has lived there for 4 years without incident, and it's about a 3-minute metro ride to campus. As for the Med Center, [2] says it's "super safe" in a practical sense, especially in gated communities, though traffic can be a pain.
+>
+> **Sources:**
+> [1],[2] Reddit — Inner-Loop Spatial Border & Neighborhood Safety Matrix
+>      https://www.reddit.com/r/UniversityOfHouston/comments/1bbuu7m/
+> [3],[5] Reddit — Safe Off-Campus Recommendations for International Students
+>      https://www.reddit.com/r/UniversityOfHouston/comments/1tfko9d/
+
+**Out-of-scope query — "Which grocery stores near UH deliver, and do they offer student discounts?"**
+> I don't have enough information on that.
+
+My corpus has nothing about grocery delivery, so instead of making up a plausible answer the system returns the exact refusal line and attaches **no sources** (I suppress the Sources block on a refusal so a "no info" answer never gets fake citations).
+
+---
+
+## Query Interface
+
+<!-- Describe the input and output fields, plus a sample interaction transcript. -->
+
+The interface is a Gradio web app (`python app.py`, opens at http://localhost:7860).
+
+**Input fields:**
+- **Your question** — a text box where you type the question (pressing Enter also submits).
+- **Chunks retrieved (top-k)** — a slider from 1 to 10, default 5, to control how many chunks get pulled into the context.
+- **Ask** — the button that runs it. There are also clickable example questions underneath.
+
+**Output fields:**
+- **Answer** — the grounded answer, with inline `[n]` citations and the code-built **Sources** list (source name + URL) appended at the bottom.
+- **Retrieved context (what the answer is grounded in)** — an expandable drop-down that shows the exact chunks that were retrieved, each with its distance score and source document, so you can see what the answer was built from.
+
+**Sample interaction transcript:**
+> **Your question:** What hidden fees or management issues should I look out for at Cullen Oaks?
+> **top-k:** 5
+> *(click Ask)*
+>
+> **Answer:** At Cullen Oaks, you should look out for surprise monthly room checks, unauthorized gathering policies that can lead to eviction, and surprise fees [1]. Utilities are not included, and you may be charged for electricity over $20 [2]. The complex also has paper-thin walls, pests, and nonexistent wifi [4].
+>
+> **Sources:**
+> [1],[2],[4] ApartmentRatings — Cullen Oaks resident reviews — https://www.apartmentratings.com/tx/houston/cullen-oaks_713748370777004/
+> [3] Reddit — Graduate Housing Options and Local Commuter Reality — https://www.reddit.com/r/UniversityOfHouston/comments/1fc3wam/
+> [5] Reddit — Graduate Student & Off-Campus Family Housing Realities — https://www.reddit.com/r/UniversityOfHouston/comments/18d0fq0/
+>
+> *(expand "Retrieved context")* → shows chunk [1] `distance=0.443` from `reviews_cullen_oaks`, chunk [2] `distance=0.452` from `reviews_cullen_oaks`, and so on.
 
 ---
 

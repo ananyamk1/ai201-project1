@@ -34,6 +34,22 @@ documents/chunks.jsonl --(src/embed.py)--> ChromaDB ./chroma_db --(src/retrieve.
   model and returns the k nearest chunks by cosine distance, each with its source info and a
   similarity score in [0, 1]. Shared config (model + collection) lives in `src/vectorstore.py`.
 
+## Milestone 5 — Grounded generation + interface
+
+```
+query --> src/retrieve.py --> top-k chunks --> src/generate.py --> grounded answer + Sources
+                                                (Groq llama-3.3-70b)   ^ attribution built in code
+                                              src/app.py = Gradio UI over generate.answer()
+```
+
+- **Generate** — `src/generate.py`: `answer(query, k=5)` retrieves, builds a numbered context
+  block, and calls Groq `llama-3.3-70b-versatile` with a strict system prompt (answer ONLY from
+  context; exact refusal string otherwise; temperature 0.2). Source attribution is appended
+  **programmatically** from chunk metadata — it does not depend on the model citing. Needs
+  `GROQ_API_KEY` in `.env`.
+- **Interface** — `src/app.py`: Gradio app over `generate.answer`, with a top-k slider and an
+  expandable panel showing the exact retrieved chunks + distances.
+
 ## Run it
 
 ```bash
@@ -46,6 +62,8 @@ python -m src.ingest                 # raw -> documents/clean/*.json
 python -m src.chunk --inspect        # clean -> chunks.jsonl + 5 sample chunks + stats
 python -m src.embed                  # chunks.jsonl -> ChromaDB (./chroma_db)
 python -m src.retrieve "is the Med Center safe without a car?"   # query the index
+python -m src.generate "what fees should I expect at Cullen Oaks?"  # grounded answer in terminal
+python -m src.app                    # launch the Gradio web UI (http://127.0.0.1:7860)
 ```
 
 Re-running is idempotent: the scraper overwrites the saved HTML, ingest re-fetches the uh.edu

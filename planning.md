@@ -168,20 +168,13 @@ UH, METRO
 **Milestone 3 — Ingestion and chunking:**
 
 **Milestone 4 — Embedding and retrieval:**
-Gave the AI this Retrieval Approach section + the architecture diagram and asked it to
-implement (a) an embedding step that loads `documents/chunks.jsonl`, embeds with
-all-MiniLM-L6-v2, and stores vectors + source metadata in ChromaDB, and (b) a
-`retrieve(query, k=5)` function. Produced `src/vectorstore.py` (shared model + collection
-config), `src/embed.py`, and `src/retrieve.py`. Key choices I directed/verified:
-- **Cosine space, normalized embeddings** (`hnsw:space="cosine"`, `normalize_embeddings=True`)
+Gave the Copilot AI this Retrieval Approach section + the architecture diagram and asked it to implement an embedding step that loads chunks.json, embeds with
+all-MiniLM-L6-v2, and stores vectors + source metadata in ChromaDB, and aslo a retrievequery, k=5 function. Produced vectorstore.py, /embed.py, and retrieve.py. Key choices I verified:
+- Cosine space, normalized embeddings (hnsw:space="cosine", normalize_embeddings=True)
   so scores are comparable across queries; report similarity = 1 − cosine distance.
-- **Same model on both sides** routed through `vectorstore.py` — if the build and query
+- Same model on both sides** routed through vectorstore.py, if the build and query
   used different models the vectors would be incompatible.
-- Verified retrieval on all 5 eval questions: Q1/Q2/Q3/Q5 retrieve strongly; **Q4 (late-night
-  safety) is weak** — the official Cougar Ride / UHPD escort chunks are indexed and rank #1–2
-  when queried with their own vocabulary (0.68/0.61), but the natural-language query "get home
-  after dark" surfaces Reddit chatter instead. This is the domain-specificity gap predicted in
-  the Production Reflection above; candidate fix for Milestone 5 is query expansion or a
-  hybrid keyword+vector retrieval.
+- Verified retrieval on all 5 eval questions: Q1/Q2/Q3/Q5 retrieve strongly; Q4 (late-night
+  safety) is weak** — the official Cougar Ride / UHPD escort chunks are indexed and rank #1–2 when queried with their own vocabulary (0.68/0.61), but the natural-language query "get home after dark" surfaces Reddit chatter instead. This is the domain-specificity gap predicted in the Production Reflection above; candidate fix for Milestone 5 is query expansion or a hybrid keyword+vector retrieval.
 
 **Milestone 5 — Generation and interface:**

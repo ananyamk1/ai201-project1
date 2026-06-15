@@ -12,9 +12,11 @@ lxml>=5.0
 playwright>=1.40
 playwright-stealth>=2.0
 
-# Query interface — add whichever you use for Milestone 5:
-# gradio>=6.9.0
-# streamlit>=1.40.0
+# Generation + interface (Milestone 5)
+# gradio 5.x keeps huggingface-hub < 1.0, which transformers (used by the
+# embedder) requires; gradio 6 forces hub >= 1.2 and breaks transformers.
+gradio>=5,<6
+huggingface-hub<1.0
 
 # Document ingestion — add if your documents/ folder contains .pdf files:
 # pdfplumber==0.11.4

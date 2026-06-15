@@ -78,9 +78,12 @@ chunk embeds in full with nothing silently truncated; the 60-token overlap keeps
 setup→punchline thought intact when a long comment spans a boundary. Chunks under 15
 tokens and exact-duplicate chunks are dropped.
 
-**Final chunk count:** **239 chunks** across the 10 documents (avg 61 tokens, max 249) —
-comfortably inside the healthy 50–2,000 range. Roughly: Reddit threads ~75, official UH
-pages ~63, apartment reviews ~36, METRORail ~65.
+**Final chunk count:** **230 chunks** across the 10 documents (avg 63 tokens, max 249) —
+comfortably inside the healthy 50–2,000 range. Breakdown: Reddit threads 75, official UH
+pages 63, METRORail 58, apartment reviews 34. (A random-sample inspection
+[`python -m src.chunk --random 5`] surfaced UI/widget fragments leaking from the METRO
+single-page app and a "See More" truncation artifact in reviews; both were filtered out
+before this final count.)
 
 ---
 

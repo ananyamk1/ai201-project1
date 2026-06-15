@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -101,20 +102,31 @@ def print_stats(chunks: list[dict]) -> None:
         print("\nChunk count is within the 50–2000 healthy range.")
 
 
+def _print_chunks(chunks: list[dict], label: str) -> None:
+    print(f"\n=== {len(chunks)} {label} chunks ===")
+    for c in chunks:
+        print("\n" + "-" * 70)
+        print(f"chunk_id : {c['chunk_id']}")
+        print(f"source   : #{c['num']} {c['source']} — {c['description'][:70]}")
+        print(f"tokens   : {c['n_tokens']}")
+        print("text     :")
+        print(c["text"])
+
+
 def inspect(chunks: list[dict], k: int = 5) -> None:
     """Print k representative chunks spread across the corpus for manual review."""
     if not chunks:
         return
     step = max(1, len(chunks) // k)
-    picks = chunks[::step][:k]
-    print(f"\n=== {len(picks)} representative chunks ===")
-    for c in picks:
-        print("\n" + "-" * 70)
-        print(f"chunk_id : {c['chunk_id']}")
-        print(f"source   : #{c['num']} {c['source']} — {c['description']}")
-        print(f"tokens   : {c['n_tokens']}")
-        print("text     :")
-        print(c["text"])
+    _print_chunks(chunks[::step][:k], "representative")
+
+
+def inspect_random(chunks: list[dict], k: int = 5, seed: int = 42) -> None:
+    """Checkpoint: print k *random* chunks (seeded so the run is reproducible)."""
+    if not chunks:
+        return
+    rng = random.Random(seed)
+    _print_chunks(rng.sample(chunks, min(k, len(chunks))), f"random (seed={seed})")
 
 
 def main(argv: list[str]) -> None:
@@ -124,10 +136,15 @@ def main(argv: list[str]) -> None:
     write_chunks(chunks)
     print(f"Wrote {len(chunks)} chunks -> documents/chunks.jsonl")
     print_stats(chunks)
+
+    def arg_k(flag: str) -> int:
+        i = argv.index(flag)
+        return int(argv[i + 1]) if i + 1 < len(argv) and argv[i + 1].isdigit() else 5
+
     if "--inspect" in argv:
-        i = argv.index("--inspect")
-        k = int(argv[i + 1]) if i + 1 < len(argv) and argv[i + 1].isdigit() else 5
-        inspect(chunks, k)
+        inspect(chunks, arg_k("--inspect"))
+    if "--random" in argv:
+        inspect_random(chunks, arg_k("--random"))
 
 
 if __name__ == "__main__":

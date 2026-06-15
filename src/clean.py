@@ -54,6 +54,17 @@ _NOISE_LINE = re.compile(
     re.I,
 )
 
+# Widget / UI text that leaks out of JS single-page apps (notably the METRO
+# rail SPA). Matched at the *start* of a line, so a line that begins with one
+# of these is dropped as non-substantive chrome.
+_NOISE_PHRASE = re.compile(
+    r"^(click or tap on any station|additional services near the station|"
+    r"estimated wait times are also posted|scroll down for schedules|"
+    r"see where all .{0,20} lines intersect|view (the )?(traditional )?metrorail map|"
+    r"\*?\s*for most operating hours|(mon-?fri|sat-?sun):?\s*runs every \d+\s*min)",
+    re.I,
+)
+
 _WS = re.compile(r"[ \t ]+")
 
 
@@ -68,7 +79,7 @@ def _is_noise(line: str) -> bool:
     line = line.strip()
     if not line:
         return True
-    if _NOISE_LINE.match(line):
+    if _NOISE_LINE.match(line) or _NOISE_PHRASE.match(line):
         return True
     # Bare vote counts / timestamps like "12 points" or "3 yr. ago".
     if re.fullmatch(r"[\d.,kKmM]+\s*(points?|comments?|upvotes?)", line, re.I):
@@ -207,6 +218,8 @@ def clean_apartmentratings(html: str) -> list[str]:
     for node in soup.select("[class*=StyledReview]"):
         txt = node.get_text(" ", strip=True)
         txt = re.sub(r"\s*(Helpful\s*)?Report\s*$", "", txt, flags=re.I)
+        # strip the trailing "…See More >" JS-expansion link artifact
+        txt = re.sub(r"\s*(\.{2,}|…)?\s*See More\s*>?\s*$", "", txt, flags=re.I)
         txt = _clean_segment_text(txt)
         key = txt[:80]
         if len(txt.split()) >= 8 and key not in seen:

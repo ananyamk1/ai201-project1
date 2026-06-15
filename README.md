@@ -96,8 +96,10 @@ before this final count.)
      latency, and local vs. API-hosted. -->
 
 **Model used:**
+I used all-MiniLM-L6-v2 from sentence-transformers, the recommended default. I picked it because it runs locally with no API key and no rate limits, the vectors are small (384 dimensions) so search is quick, and it let me keep the exact same model on both the indexing side and the query side. It also lined up with my chunking plan: its input ceiling is 256 tokens, which is the whole reason I capped my chunks at 250 so nothing gets cut off before it's embedded.
 
 **Production tradeoff reflection:**
+If I were shipping this for real and money wasn't a concern, the two things I'd weigh most are context length and how well the model handles my kind of text. The 256-token limit means a long Reddit comment can get clipped, and the most useful line is often near the end ("the commute destroyed me after month 3"), so a longer-context model would stop me from losing that. The bigger one is domain fit: my data is informal, hedged, slangy student talk, and a general model can flatten that into noise, which is exactly what hurt my late-night safety question. So I'd look at a larger or domain-tuned embedding model (or an API one like OpenAI's text-embedding-3-large), and since a lot of my users are international students, better multilingual handling would matter too. The trade-off is cost and latency, since those usually mean API calls and rate limits instead of a free local model.
 
 ---
 
@@ -111,8 +113,10 @@ before this final count.)
      the mechanism. -->
 
 **System prompt grounding instruction:**
+My system prompt doesn't just suggest using the documents, it forces it. I tell the model it can answer ONLY from the numbered context chunks I pass in, to use no outside knowledge, and that if the context doesn't have the answer it must reply with the exact line "I don't have enough information on that." and nothing else. I also tell it these are individual student opinions and reviews, not official fact, so it should point out when sources disagree instead of inventing a consensus, and I run it at a low temperature (0.2) so it doesn't get creative. I checked this by asking something totally off-topic (a taco truck in Austin) and it refused word-for-word like it was told to.
 
 **How source attribution is surfaced in the response:**
+Attribution is built in code, not left up to the model. After the answer comes back, my code takes the chunks that were actually retrieved, groups them by their source document, and builds a "Sources:" list from the metadata, where each source shows the [n] numbers it covered plus the real URL. So even if the model forgot to cite anything, the sources are still there and correct. On top of that I ask the model to cite [n] inline in its sentences, and the Gradio app has a drop-down that shows the exact chunks (with their distance scores) the answer was grounded in. One small thing I added: I don't attach sources to a refusal, so a "no info" answer never gets fake citations stapled to it.
 
 ---
 
@@ -124,14 +128,14 @@ before this final count.)
 
 | # | Question | Expected answer | System response (summarized) | Retrieval quality | Response accuracy |
 |---|----------|-----------------|------------------------------|-------------------|-------------------|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
-| 5 | | | | | |
+| 1 | International grad student, no car — is Eastwood or the Med Center safe and realistic to commute from? | Yes, with trade-offs: the Med Center is safer but the METRO ride at night can feel sketchy and slow; Eastwood is closer and cheaper but still stay alert. | Said both are viable — Eastwood is safe and ~3 min to campus by metro, and the Med Center is "super safe" in gated communities with traffic the main downside. | Relevant | Partially accurate (got both-viable + Eastwood-by-metro, but missed the night-time METRO caveat) |
+| 2 | What hidden fees or management problems should I expect at a place like Cullen Oaks? | Tough management and security issues: slow maintenance (e.g. AC in summer), surprise admin fees, and unmonitored garages where bikes get stolen. | Listed surprise room checks, eviction over small things, surprise fees, utilities not included / ~$20 electricity, pests, thin walls, and constant management turnover. | Relevant | Accurate (nailed the fees + bad management + maintenance theme, just with different specifics than I expected) |
+| 3 | Can I afford a 1-bed in Midtown or Montrose on a standard grad stipend? | No — not without a roommate. A stipend is ~$1,800/mo and 1-beds run $1,300–$2,000+, so you'd need to split a 2-bed. | Said grad students pay around $1,400 and it's hard to find under $1k, gave no Midtown/Montrose 1-bed price, and partly fell back to "I don't have enough information." | Partially relevant | Partially accurate (showed rent is high but never reached the clear "no, get a roommate" conclusion) |
+| 4 | Late-night labs, no car — how do I get home safely after dark? | Don't walk alone; call Cougar Ride or request a UHPD police escort, and don't walk past campus borders alone after 10pm. | Recommended the Cougar Ride shuttle plus pepper spray, contacting police, and sticking together after 6pm. | Partially relevant | Partially accurate (got Cougar Ride + general safety, but missed the official UHPD security escort) |
+| 5 | Is it cheaper to live at the University Lofts or split an off-campus apartment? | Off-campus with a roommate is cheaper but the Lofts are easier; splits save cash but you pay separate electricity (brutal in Houston summers), while the Lofts cost more but include utilities and no meal plan. | Said an off-campus shared room (~$500/mo) looks cheaper and the Lofts are "expensive" with no exact price, concluding splitting is probably smarter but Lofts pricing is missing. | Relevant | Partially accurate (right that splitting is cheaper, but missed the utilities-included vs separate-electricity point) |
 
-**Retrieval quality:** Relevant / Partially relevant / Off-target  
-**Response accuracy:** Accurate / Partially accurate / Inaccurate
+Retrieval quality: Relevant / Partially relevant / Off-target  
+Response accuracy: Accurate / Partially accurate / Inaccurate
 
 ---
 
@@ -148,13 +152,17 @@ before this final count.)
      "The embedding model treated the professor's nickname as out-of-vocabulary and returned
      results from an unrelated review" is an explanation. -->
 
-**Question that failed:**
+Question that failed:
+"I have late-night labs and no car. How do I get back to my off-campus apartment safely after dark?" (test question 4)
 
-**What the system returned:**
+What the system returned:
+It suggested the Cougar Ride shuttle plus Reddit advice — carry pepper spray, know how to contact the police, and stick together after 6pm. It never mentioned the official UHPD security escort service, even though that's basically the official answer to this question and that exact content is sitting in my corpus.
 
-**Root cause (tied to a specific pipeline stage):**
+Root cause:
+This is a retrieval/embedding-stage problem, a vocab mismatch. My question is phrased like a student ("get home safely after dark"), but the official UH page describes the service as a "security escort" and an "after-hours shuttle." all-MiniLM is a general model and doesn't really know those are the same idea, so when I embed the query and search, the UHPD escort chunk doesn't make the top 5 — casual Reddit comments that literally share words like "safe" and "night" score closer. I confirmed it's a wording gap and not missing data: if I search using the page's own language ("Cougar Ride security escort"), that exact chunk jumps to the #1 spot with a much lower distance (~0.32). So the chunk is indexed perfectly fine; the embedding model just can't bridge casual wording to official wording. (Cougar Ride only slipped in this time because it happened to land in the top 5 for this phrasing.)
 
-**What you would change to fix it:**
+What I'd change to fix it:
+A few options. The cheapest is query expansion — have a small model rewrite the question into official terms ("escort, shuttle, night safety") before searching. Another is hybrid retrieval, mixing keyword matching with the vector search so an exact term like "escort" gets weight even when the vectors don't agree. The heavier fix is swapping in or fine-tuning an embedding model that actually understands this housing/safety vocabulary. Bumping top-k up a little also helps pull the official chunk into the context window.
 
 ---
 
@@ -164,8 +172,10 @@ before this final count.)
      Answer both questions with at least 2–3 sentences each. -->
 
 **One way the spec helped you during implementation:**
+Writing the Chunking Strategy and Retrieval Approach down first really paid off. Because I'd already noted that all-MiniLM has a 256-token ceiling, I knew to cap chunks at 250 and to count tokens with the model's own tokenizer, so nothing gets quietly cut off before it's embedded. And because my planning said "one chunk = one person's complete thought, never blend two people," I built the chunker to be segment-aware from the start instead of just splitting on character count. Having those decisions written down meant I could hand the spec straight to the AI and get back code that already matched what I wanted, instead of going back and forth.
 
 **One way your implementation diverged from the spec, and why:**
+My plan said I'd scrape everything live with requests + BeautifulSoup, but that fell apart right away. Reddit, Yelp, and the METRO site block scripts at the TLS level, so every request came back as a 403 wall no matter what headers I used. So I switched to driving a real headless browser (Playwright/Chromium) to capture those pages, and read Reddit through old.reddit.com so the comments actually load. I also had to swap Yelp out for ApartmentRatings because Yelp sits behind a DataDome CAPTCHA I couldn't get past, and fix two official UH/METRO URLs that had moved. The end goal — clean text from those 10 sources — stayed exactly the same; only the "how" changed, and I wrote all of that down in the ingestion notes in planning.md.
 
 ---
 
@@ -182,12 +192,12 @@ before this final count.)
 
 **Instance 1**
 
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
+- *What I gave the AI:* My Documents and Chunking Strategy sections plus the pipeline diagram, and I asked it to write the load → clean → chunk pipeline at my 250-token / 60-overlap setting.
+- *What it produced:* The ingest, clean, and chunk scripts that output a chunks file with source metadata attached to each chunk.
+- *What I changed or overrode:* The first cleaner quietly deleted every single Reddit comment. It was throwing away all `<form>` tags (old.reddit wraps each comment in a form), and its junk filter matched the word "vote" inside "unvoted," which is on every comment. I caught it because all my Reddit sources came out empty, and I directed the fix. I also had it add a random-chunk inspector, and that's what exposed METRO menu/widget text leaking into chunks, which I then had it filter out.
 
 **Instance 2**
 
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
+- *What I gave the AI:* My Retrieval Approach section, my grounding requirement (answer only from retrieved chunks, refuse otherwise, always cite sources), the output format I wanted, and a basic Gradio skeleton, and asked it to wire up generation on Groq's llama-3.3-70b plus the web UI.
+- *What it produced:* `generate.py` (the prompt building + Groq call) and `app.py` (the Gradio interface).
+- *What I changed or overrode:* I made source attribution programmatic instead of trusting the model to cite — the "Sources" list is built in code from the retrieved chunks' metadata, so it can't be skipped or made up. I also tightened the system prompt to force the exact refusal line, and fixed a dependency clash where installing gradio 6 broke my embedding model (it forced a huggingface-hub version that transformers couldn't use) by pinning gradio 5 instead.

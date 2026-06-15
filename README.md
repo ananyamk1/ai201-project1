@@ -87,6 +87,31 @@ before this final count.)
 
 ---
 
+## Sample Chunks
+
+<!-- At least 5 labeled sample chunks, each with its source document name. -->
+
+Here are 5 real chunks straight out of `documents/chunks.jsonl`, each labeled with the source document it came from:
+
+**1. Source document: `reddit_05_safe_neighborhood` (#5 Reddit) — 38 tokens**
+> [Thread] Safe neighborhood near uh? Me and my friends are planing to rent an apartment senior year. What's the closest neighborhood to uh that would be considered a safe neighborhood?
+
+**2. Source document: `reviews_cullen_oaks` (#9 ApartmentRatings) — 63 tokens**
+> Current Resident 716765 Resident • 2023 1.7 7/25/2023 The place is disaster, terribly infected by cockroaches. The roaches are every where. They are even in the microwave and fridge. Building has always a terrible smell and the rooms are very small and dingy
+
+**3. Source document: `uh_parking_transit` (#8 Official UH) — 37 tokens**
+> Parking and Transportation Services offers eligible faculty, staff and students the opportunity to join COAST (Coogs on Alternative and Sustainable Transportation), and sign up for the METRO fare card incentive.
+
+**4. Source document: `reddit_01_grad_housing_bleak` (#1 Reddit) — 60 tokens**
+> Most people at UH live off campus both grad and undergrad we're an 85% commuter school I suggest looking into midtown lots of young adults and young families. Restraints and bars in walking distance one of the safer areas near campus it's about a ten minute drive to campus which is nice
+
+**5. Source document: `metro_rail` (#10 Transit/Map) — 70 tokens**
+> METRORail is Houston's light rail network, offering convenient access to many popular destinations in and around downtown Houston. These include the Texas Medical Center, Museum District, Houston Zoo, Theater District, NRG Stadium, University of Houston and Texas Southern University. With trains running frequently, you'll be on board and on track to your destination quickly.
+
+Each chunk keeps its source attached as metadata (`doc_id`, source type, URL, position), so anything retrieved can be traced straight back to where it came from.
+
+---
+
 ## Embedding Model
 
 <!-- Name the embedding model you used and explain your choice.
@@ -162,7 +187,7 @@ Root cause:
 This is a retrieval/embedding-stage problem, a vocab mismatch. My question is phrased like a student ("get home safely after dark"), but the official UH page describes the service as a "security escort" and an "after-hours shuttle." all-MiniLM is a general model and doesn't really know those are the same idea, so when I embed the query and search, the UHPD escort chunk doesn't make the top 5 — casual Reddit comments that literally share words like "safe" and "night" score closer. I confirmed it's a wording gap and not missing data: if I search using the page's own language ("Cougar Ride security escort"), that exact chunk jumps to the #1 spot with a much lower distance (~0.32). So the chunk is indexed perfectly fine; the embedding model just can't bridge casual wording to official wording. (Cougar Ride only slipped in this time because it happened to land in the top 5 for this phrasing.)
 
 What I'd change to fix it:
-A few options. The cheapest is query expansion — have a small model rewrite the question into official terms ("escort, shuttle, night safety") before searching. Another is hybrid retrieval, mixing keyword matching with the vector search so an exact term like "escort" gets weight even when the vectors don't agree. The heavier fix is swapping in or fine-tuning an embedding model that actually understands this housing/safety vocabulary. Bumping top-k up a little also helps pull the official chunk into the context window.
+A few options. The cheapest is query expansion, have a small model rewrite the question into official terms "escort, shuttle, night safety" before searching. Another is hybrid retrieval, mixing keyword matching with the vector search so an exact term like escort gets weight even when the vectors don't agree. The heavier fix is swapping in or fine-tuning an embedding model that actually understands this housing/safety vocabulary. Bumping top-k up a little also helps pull the official chunk into the context window.
 
 ---
 
@@ -171,10 +196,10 @@ A few options. The cheapest is query expansion — have a small model rewrite th
 <!-- Reflect on how planning.md shaped your implementation.
      Answer both questions with at least 2–3 sentences each. -->
 
-**One way the spec helped you during implementation:**
+One way the spec helped during implementation:
 Writing the Chunking Strategy and Retrieval Approach down first really paid off. Because I'd already noted that all-MiniLM has a 256-token ceiling, I knew to cap chunks at 250 and to count tokens with the model's own tokenizer, so nothing gets quietly cut off before it's embedded. And because my planning said "one chunk = one person's complete thought, never blend two people," I built the chunker to be segment-aware from the start instead of just splitting on character count. Having those decisions written down meant I could hand the spec straight to the AI and get back code that already matched what I wanted, instead of going back and forth.
 
-**One way your implementation diverged from the spec, and why:**
+One way my implementation diverged from the spec, & why:
 My plan said I'd scrape everything live with requests + BeautifulSoup, but that fell apart right away. Reddit, Yelp, and the METRO site block scripts at the TLS level, so every request came back as a 403 wall no matter what headers I used. So I switched to driving a real headless browser (Playwright/Chromium) to capture those pages, and read Reddit through old.reddit.com so the comments actually load. I also had to swap Yelp out for ApartmentRatings because Yelp sits behind a DataDome CAPTCHA I couldn't get past, and fix two official UH/METRO URLs that had moved. The end goal — clean text from those 10 sources — stayed exactly the same; only the "how" changed, and I wrote all of that down in the ingestion notes in planning.md.
 
 ---
@@ -194,10 +219,10 @@ My plan said I'd scrape everything live with requests + BeautifulSoup, but that 
 
 - *What I gave the AI:* My Documents and Chunking Strategy sections plus the pipeline diagram, and I asked it to write the load → clean → chunk pipeline at my 250-token / 60-overlap setting.
 - *What it produced:* The ingest, clean, and chunk scripts that output a chunks file with source metadata attached to each chunk.
-- *What I changed or overrode:* The first cleaner quietly deleted every single Reddit comment. It was throwing away all `<form>` tags (old.reddit wraps each comment in a form), and its junk filter matched the word "vote" inside "unvoted," which is on every comment. I caught it because all my Reddit sources came out empty, and I directed the fix. I also had it add a random-chunk inspector, and that's what exposed METRO menu/widget text leaking into chunks, which I then had it filter out.
+- *What I changed or overrode:* The first cleaner quietly deleted every single Reddit comment. It was throwing away all <form> tags (old.reddit wraps each comment in a form), and its junk filter matched the word "vote" inside "unvoted," which is on every comment. I caught it because all my Reddit sources came out empty, and I directed the fix. I also had it add a random-chunk inspector, and that's what exposed METRO menu/widget text leaking into chunks, which I then had it filter out.
 
 **Instance 2**
 
-- *What I gave the AI:* My Retrieval Approach section, my grounding requirement (answer only from retrieved chunks, refuse otherwise, always cite sources), the output format I wanted, and a basic Gradio skeleton, and asked it to wire up generation on Groq's llama-3.3-70b plus the web UI.
-- *What it produced:* `generate.py` (the prompt building + Groq call) and `app.py` (the Gradio interface).
-- *What I changed or overrode:* I made source attribution programmatic instead of trusting the model to cite — the "Sources" list is built in code from the retrieved chunks' metadata, so it can't be skipped or made up. I also tightened the system prompt to force the exact refusal line, and fixed a dependency clash where installing gradio 6 broke my embedding model (it forced a huggingface-hub version that transformers couldn't use) by pinning gradio 5 instead.
+- What I gave the AI: My Retrieval Approach section, my grounding requirement (answer only from retrieved chunks, refuse otherwise, always cite sources), the output format I wanted, and a basic Gradio skeleton, and asked it to wire up generation on Groq's llama-3.3-70b plus the web UI.
+- What it produced: generate.py (the prompt building + Groq call) and app.py (the Gradio interface).
+- What I changed or overrode: I made source attribution programmatic instead of trusting the model to cite, the Sources list is built in code from the retrieved chunks' metadata, so it can't be skipped or made up. I also tightened the system prompt to force the exact refusal line, and fixed a dependency clash where installing gradio 6 broke my embedding model (it forced a huggingface-hub version that transformers couldn't use) by pinning gradio 5 instead.

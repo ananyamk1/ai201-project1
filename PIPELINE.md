@@ -20,6 +20,20 @@ uh.edu pages ──────(live fetch in ingest)─────────
    (measured with all-MiniLM-L6-v2's own tokenizer), never crossing a segment boundary. Drops
    <15-token fragments and exact duplicates. → `documents/chunks.jsonl`
 
+## Milestone 4 — Embedding + retrieval
+
+```
+documents/chunks.jsonl --(src/embed.py)--> ChromaDB ./chroma_db --(src/retrieve.py)--> top-k chunks
+                          all-MiniLM-L6-v2     (cosine, 384-dim)        query -> nearest neighbors
+```
+
+- **Embed** — `src/embed.py`: embeds every chunk with all-MiniLM-L6-v2 (local, no API key)
+  and stores the 384-dim vectors in a local ChromaDB collection with source metadata
+  (`doc_id`, `source`, `segment_index`, `url`, ...) for attribution. Rebuilds from scratch each run.
+- **Retrieve** — `src/retrieve.py`: `retrieve(query, k=5)` embeds the query with the same
+  model and returns the k nearest chunks by cosine distance, each with its source info and a
+  similarity score in [0, 1]. Shared config (model + collection) lives in `src/vectorstore.py`.
+
 ## Run it
 
 ```bash
@@ -30,6 +44,8 @@ playwright install chromium          # one-time, downloads the browser engine
 python -m src.scrape_browser         # bot-walled sites -> documents/raw/*.html
 python -m src.ingest                 # raw -> documents/clean/*.json
 python -m src.chunk --inspect        # clean -> chunks.jsonl + 5 sample chunks + stats
+python -m src.embed                  # chunks.jsonl -> ChromaDB (./chroma_db)
+python -m src.retrieve "is the Med Center safe without a car?"   # query the index
 ```
 
 Re-running is idempotent: the scraper overwrites the saved HTML, ingest re-fetches the uh.edu

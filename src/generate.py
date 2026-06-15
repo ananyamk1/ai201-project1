@@ -24,6 +24,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .retrieve import retrieve, DEFAULT_K
+from .hybrid import hybrid_retrieve
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
@@ -93,27 +94,64 @@ def _client():
     return Groq(api_key=key)
 
 
-def answer(query: str, k: int = DEFAULT_K) -> dict:
-    """Retrieve, generate a grounded answer, and attach guaranteed attribution."""
-    hits = retrieve(query, k)
+def _retriever(mode: str):
+    """Pick the retrieval function. 'hybrid' = BM25 + vector (RRF); else vector."""
+    return hybrid_retrieve if mode == "hybrid" else retrieve
+
+
+def _generate(messages: list[dict]) -> str:
+    client = _client()
+    resp = client.chat.completions.create(
+        model=MODEL, messages=messages, temperature=0.2, max_tokens=600,
+    )
+    return resp.choices[0].message.content.strip()
+
+
+def answer(query: str, k: int = DEFAULT_K, mode: str = "vector",
+           source: str | None = None) -> dict:
+    """Retrieve, generate a grounded answer, and attach guaranteed attribution.
+
+    mode: "vector" (default) or "hybrid" (BM25 + vector). source: optional
+    metadata filter, e.g. "Reddit" / "Official UH" / "ApartmentRatings".
+    """
+    hits = _retriever(mode)(query, k, source=source)
     if not hits:
         return {"answer": REFUSAL, "sources": "", "hits": []}
 
     context = build_context(hits)
-    client = _client()
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(query, context)},
-        ],
-        temperature=0.2,
-        max_tokens=600,
-    )
-    text = resp.choices[0].message.content.strip()
-
+    text = _generate([
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": build_user_prompt(query, context)},
+    ])
     # Programmatic attribution: only append sources when the model actually
     # answered (not on the refusal), so a refusal isn't given false citations.
+    sources = "" if text.strip() == REFUSAL else format_sources(hits)
+    return {"answer": text, "sources": sources, "hits": hits}
+
+
+def answer_chat(history: list[dict], query: str, k: int = DEFAULT_K,
+                mode: str = "vector", source: str | None = None) -> dict:
+    """Conversational version: uses prior turns so a follow-up like "what about
+    Montrose?" is understood in the context of the earlier question.
+
+    `history` is a list of {"role": "user"|"assistant", "content": str} from
+    earlier turns. We do two things with it: (1) build the retrieval query from
+    the previous user turn + the current one, so retrieval pulls context for the
+    thing the follow-up is actually about; (2) pass the recent turns to the model
+    so its wording resolves references like "there" or "that one".
+    """
+    prev_user = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+    search_query = f"{prev_user} {query}".strip() if prev_user else query
+    hits = _retriever(mode)(search_query, k, source=source)
+    if not hits:
+        return {"answer": REFUSAL, "sources": "", "hits": []}
+
+    context = build_context(hits)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages += history[-4:]  # keep the last couple of turns for context
+    messages.append({"role": "user", "content": build_user_prompt(query, context)})
+    text = _generate(messages)
+
     sources = "" if text.strip() == REFUSAL else format_sources(hits)
     return {"answer": text, "sources": sources, "hits": hits}
 

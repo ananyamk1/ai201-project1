@@ -22,14 +22,21 @@ from .vectorstore import embed, get_collection
 DEFAULT_K = 5
 
 
-def retrieve(query: str, k: int = DEFAULT_K) -> list[dict]:
-    """Return the top-k chunks most relevant to `query`, best first."""
+def retrieve(query: str, k: int = DEFAULT_K, source: str | None = None) -> list[dict]:
+    """Return the top-k chunks most relevant to `query`, best first.
+
+    If `source` is given (e.g. "Reddit", "Official UH", "ApartmentRatings",
+    "Transit/Map"), results are restricted to chunks from that source type via
+    ChromaDB's metadata `where` filter — this is the metadata-filtering feature.
+    """
     collection = get_collection()
     query_vec = embed([query])  # same model + normalization as the index
 
+    where = {"source": source} if source else None
     res = collection.query(
         query_embeddings=query_vec,
         n_results=k,
+        where=where,
         include=["documents", "metadatas", "distances"],
     )
 

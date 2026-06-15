@@ -1,0 +1,114 @@
+{
+  "_comment": "Source registry for the ingestion pipeline. mode=local_html means a page saved from the browser into documents/raw/<local_file> (used for sources that hard-block scripts: Reddit, Yelp, METRO). mode=url means the pipeline live-fetches the listed urls (used for uh.edu pages, which are not bot-walled). cleaner picks the extraction strategy.",
+  "sources": [
+    {
+      "id": "reddit_01_grad_housing_bleak",
+      "num": 1,
+      "source": "Reddit",
+      "description": "Graduate Housing Options and Local Commuter Reality",
+      "mode": "local_html",
+      "local_file": "reddit_01_grad_housing_bleak.html",
+      "url": "https://www.reddit.com/r/UniversityOfHouston/comments/1fc3wam/graduate_housing_options_look_bleak/",
+      "cleaner": "reddit"
+    },
+    {
+      "id": "reddit_02_find_housing_roommates",
+      "num": 2,
+      "source": "Reddit",
+      "description": "Incoming Grad Student Roommate and Budget Search",
+      "mode": "local_html",
+      "local_file": "reddit_02_find_housing_roommates.html",
+      "url": "https://www.reddit.com/r/UniversityOfHouston/comments/1c00kux/how_do_grad_students_find_housing_and_roommates/",
+      "cleaner": "reddit"
+    },
+    {
+      "id": "reddit_03_safe_international",
+      "num": 3,
+      "source": "Reddit",
+      "description": "Safe Off-Campus Recommendations for International Students",
+      "mode": "local_html",
+      "local_file": "reddit_03_safe_international.html",
+      "url": "https://www.reddit.com/r/UniversityOfHouston/comments/1tfko9d/safe_offcampus_housing_recommendations_for/",
+      "cleaner": "reddit"
+    },
+    {
+      "id": "reddit_04_family_housing",
+      "num": 4,
+      "source": "Reddit",
+      "description": "Graduate Student & Off-Campus Family Housing Realities",
+      "mode": "local_html",
+      "local_file": "reddit_04_family_housing.html",
+      "url": "https://www.reddit.com/r/UniversityOfHouston/comments/18d0fq0/graduate_student_family_housing/",
+      "cleaner": "reddit"
+    },
+    {
+      "id": "reddit_05_safe_neighborhood",
+      "num": 5,
+      "source": "Reddit",
+      "description": "Inner-Loop Spatial Border & Neighborhood Safety Matrix",
+      "mode": "local_html",
+      "local_file": "reddit_05_safe_neighborhood.html",
+      "url": "https://www.reddit.com/r/UniversityOfHouston/comments/1bbuu7m/safe_neighborhood_near_uh/",
+      "cleaner": "reddit"
+    },
+    {
+      "id": "reddit_06_lofts_vs_offcampus",
+      "num": 6,
+      "source": "Reddit",
+      "description": "The Lofts vs. Off-Campus Complex Cost-Benefit Breakdown",
+      "mode": "local_html",
+      "local_file": "reddit_06_lofts_vs_offcampus.html",
+      "url": "https://www.reddit.com/r/UniversityOfHouston/comments/1bu5rzc/graduate_housing_recommendations_lofts/",
+      "cleaner": "reddit"
+    },
+    {
+      "id": "uh_commuter_services",
+      "num": 7,
+      "source": "Official UH",
+      "description": "UH Commuter Student Services: getting to campus, Cougar Ride after-hours shuttle, campus safety resources (corrected URL; original /dsa/commuter/ now 404s and lives under /dos/commuter/)",
+      "mode": "url",
+      "urls": [
+        "https://www.uh.edu/dos/commuter/",
+        "https://www.uh.edu/dos/commuter/getting-to-campus/",
+        "https://www.uh.edu/dos/commuter/getting-to-campus/additional-resources/",
+        "https://www.uh.edu/parking/cougar-ride/",
+        "https://www.uh.edu/police/community-services/security-escort/"
+      ],
+      "url": "https://www.uh.edu/dos/commuter/",
+      "cleaner": "generic"
+    },
+    {
+      "id": "uh_parking_transit",
+      "num": 8,
+      "source": "Official UH",
+      "description": "UH Parking & Transportation Services: Houston METRO public transit, student Q-Card 50% discount, COAST program",
+      "mode": "url",
+      "urls": [
+        "https://www.uh.edu/parking/transportation-options/public-transit/",
+        "https://www.uh.edu/parking/transportation-options/"
+      ],
+      "url": "https://www.uh.edu/parking/transportation-options/public-transit/",
+      "cleaner": "generic"
+    },
+    {
+      "id": "reviews_cullen_oaks",
+      "num": 9,
+      "source": "ApartmentRatings",
+      "description": "Cullen Oaks resident reviews — management, surprise fees, slow maintenance, pests, and parking/break-in security complaints (substituted for Yelp, which is gated behind a DataDome CAPTCHA wall that blocks automated capture)",
+      "mode": "local_html",
+      "local_file": "apartmentratings_cullen_oaks.html",
+      "url": "https://www.apartmentratings.com/tx/houston/cullen-oaks_713748370777004/",
+      "cleaner": "apartmentratings"
+    },
+    {
+      "id": "metro_rail",
+      "num": 10,
+      "source": "Transit/Map",
+      "description": "METRO Purple/Red Line Rail Route, Stops, and Core Corridors",
+      "mode": "local_html",
+      "local_file": "metro_rail.html",
+      "url": "https://www.ridemetro.org/riding-metro/transit-services/metrorail",
+      "cleaner": "generic"
+    }
+  ]
+}

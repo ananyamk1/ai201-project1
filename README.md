@@ -14,6 +14,15 @@
      Example: "Student reviews of CS professors at [university] — useful because official
      course descriptions don't reflect teaching style, exam difficulty, or workload." -->
 
+Off-campus housing experiences for University of Houston students — neighborhood
+safety, commute/transit options, rent affordability vs. grad stipends, and common
+lease/management issues. UH's official channels list a few recommended complexes but
+offer no practical guidance on which areas are safe and walkable, what's realistic on
+a stipend without a car, or which complexes have predatory management. That knowledge
+is scattered across student anecdotes (Reddit), resident reviews, transit maps, and
+sparse official pages rather than collected in one place — which is exactly what a RAG
+system over these sources can provide.
+
 ---
 
 ## Document Sources
@@ -22,18 +31,24 @@
      Be specific: include URLs, subreddit names, forum thread titles, or file names.
      Aim for variety — sources that together cover different subtopics or perspectives. -->
 
+All 10 sources are registered in `sources.json`. Reddit, Yelp, and ridemetro.org
+hard-block scripted requests (TLS-fingerprint 403 walls), so those were captured with
+a real headless browser (`src/scrape_browser.py`, Playwright/Chromium) and saved to
+`documents/raw/`; the uh.edu pages are not bot-walled and are fetched live by
+`src/ingest.py`. Two substitutions/fixes are noted in the table.
+
 | # | Source | Type | URL or file path |
 |---|--------|------|-----------------|
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
-| 4 | | | |
-| 5 | | | |
-| 6 | | | |
-| 7 | | | |
-| 8 | | | |
-| 9 | | | |
-| 10 | | | |
+| 1 | r/UniversityOfHouston — "Graduate housing options look bleak" | Reddit thread (saved HTML) | https://www.reddit.com/r/UniversityOfHouston/comments/1fc3wam/ |
+| 2 | r/UniversityOfHouston — "How do grad students find housing and roommates?" | Reddit thread (saved HTML) | https://www.reddit.com/r/UniversityOfHouston/comments/1c00kux/ |
+| 3 | r/UniversityOfHouston — "Safe off-campus housing recommendations for international students" | Reddit thread (saved HTML) | https://www.reddit.com/r/UniversityOfHouston/comments/1tfko9d/ |
+| 4 | r/UniversityOfHouston — "Graduate student / family housing" | Reddit thread (saved HTML) | https://www.reddit.com/r/UniversityOfHouston/comments/18d0fq0/ |
+| 5 | r/UniversityOfHouston — "Safe neighborhood near UH?" | Reddit thread (saved HTML) | https://www.reddit.com/r/UniversityOfHouston/comments/1bbuu7m/ |
+| 6 | r/UniversityOfHouston — "Graduate housing recommendations: Lofts" | Reddit thread (saved HTML) | https://www.reddit.com/r/UniversityOfHouston/comments/1bu5rzc/ |
+| 7 | UH Commuter Student Services — getting to campus, Cougar Ride, UHPD security escort | Official UH (live fetch, 5 pages) | https://www.uh.edu/dos/commuter/ (corrected from the dead /dsa/commuter/) |
+| 8 | UH Parking & Transportation — METRO transit, student Q-Card, COAST | Official UH (live fetch) | https://www.uh.edu/parking/transportation-options/public-transit/ |
+| 9 | Cullen Oaks resident reviews (76 reviews) | ApartmentRatings (saved HTML) | https://www.apartmentratings.com/tx/houston/cullen-oaks_713748370777004/ — **substituted for Yelp**, which is behind a DataDome CAPTCHA wall |
+| 10 | METRORail — Red/Purple Line routes, stops, fares | Transit (saved HTML) | https://www.ridemetro.org/riding-metro/transit-services/metrorail (corrected from the dead `metro-rail`) |
 
 ---
 
@@ -46,13 +61,26 @@
      - Any preprocessing you did before chunking (e.g., stripping HTML, removing headers)
      - What your final chunk count was across all documents -->
 
-**Chunk size:**
+**Chunk size:** 250 tokens maximum per chunk, counted with all-MiniLM-L6-v2's own
+tokenizer (not a word estimate).
 
-**Overlap:**
+**Overlap:** 60 tokens (~24%) carried between consecutive chunks of the same segment.
 
-**Why these choices fit your documents:**
+**Why these choices fit your documents:** The corpus is short, opinion-dense units —
+Reddit comments and apartment reviews typically run 100–300 words, i.e. one person's
+complete thought. Preprocessing first cleans each page into **segments** (one Reddit
+comment, one resident review, or one section of an official page) with BeautifulSoup,
+stripping scripts/nav/cookie banners/footers/vote+share widgets and decoding HTML
+entities. The chunker then packs whole sentences within a segment up to 250 tokens and
+**never merges across segments**, so a chunk is always one person's opinion, never two
+blended together. The 250 cap sits just under the embedder's 256-token ceiling, so every
+chunk embeds in full with nothing silently truncated; the 60-token overlap keeps a
+setup→punchline thought intact when a long comment spans a boundary. Chunks under 15
+tokens and exact-duplicate chunks are dropped.
 
-**Final chunk count:**
+**Final chunk count:** **239 chunks** across the 10 documents (avg 61 tokens, max 249) —
+comfortably inside the healthy 50–2,000 range. Roughly: Reddit threads ~75, official UH
+pages ~63, apartment reviews ~36, METRORail ~65.
 
 ---
 

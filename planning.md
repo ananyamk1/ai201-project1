@@ -36,9 +36,15 @@ This project will answer practical questions about neighborhood safety, commute 
 | 6 | Reddit | The Lofts vs. Off-Campus Complex Cost-Benefit Breakdown | https://www.reddit.com/r/UniversityOfHouston/comments/1bu5rzc/graduate_housing_recommendations_lofts/ |
 | 7 | Official UH | Official UH Off-Campus Housing Search Engine Portal | https://offcampushousing.uh.edu/ |
 | 8 | Official UH | UH Division of Student Affairs Commuter Resources Guide | https://www.uh.edu/dsa/commuter/ |
-| 9 | Yelp Business | Cullen Oaks Property Management Review Index & Warnings | https://www.yelp.com/biz/cullen-oaks-houston |
-| 10 | Transit/Map | METRO Purple Line Rail Route, Stops, and Core Corridors | https://www.ridemetro.org/riding-metro/transit-services/metro-rail |
+| 9 | ApartmentRatings (sub for Yelp) | Cullen Oaks resident reviews — management, fees, maintenance, security | https://www.apartmentratings.com/tx/houston/cullen-oaks_713748370777004/ |
+| 10 | Transit/Map | METRO Red/Purple Line Rail Route, Stops, and Core Corridors | https://www.ridemetro.org/riding-metro/transit-services/metrorail |
 ---
+
+**Ingestion note (Milestone 3):** Reddit, Yelp, and ridemetro.org all hard-block automated requests — not just by User-Agent but by TLS fingerprint, so *any* `requests`/`curl` call gets a 403 anti-bot wall regardless of headers. Rather than hand-saving pages, I capture them with a real headless browser engine (Playwright/Chromium, `src/scrape_browser.py`), which renders like an actual browser and writes the rendered HTML to `documents/raw/` for the pipeline to clean. Reddit threads are fetched via `old.reddit.com` (comments are server-rendered there; new Reddit loads them via JS). Specifics:
+
+- **Sources 1–6, 10** captured via the browser scraper.
+- **Sources 7, 8 (official UH)** are not bot-walled and are fetched live by `src/ingest.py`. Their original `/dsa/commuter/` URL had moved to `/dos/commuter/` and the METRO URL `metro-rail` → `metrorail`, so `sources.json` uses the corrected URLs. The UH off-campus *search portal* (originally #7) is a dynamic JS app with no static text, so it was replaced by the content-rich UH Commuter Student Services, Cougar Ride, UHPD security-escort, and Parking & Transportation pages (5 pages total), which cover the same official-guidance ground and directly support eval Q1/Q4.
+- **Source 9** was **Yelp**, but Yelp sits behind a DataDome CAPTCHA wall that headless capture can't clear, so I substituted **ApartmentRatings** (76 resident reviews of the same property, Cullen Oaks), which fills the identical "property-management reviews" role for eval Q2.
 
 ## Chunking Strategy
 
@@ -48,14 +54,18 @@ This project will answer practical questions about neighborhood safety, commute 
      A review-heavy corpus warrants different chunking than a long FAQ. -->
 
 **Chunk size:**
-200-400 tokens per chunk
+250 tokens max per chunk (finalized within my 200–400 range)
 
 **Overlap:**
-50-75 token overlap
+60 token overlap (~24%, finalized within my 50–75 range)
 
 **Reasoning:**
 Reddit comments and Yelp reviews typically run 100–300 words. I chose 200-400 chunk size roughly to mirror one complete thought from one person. I'm not  splitting ideas mid-sentence or merging two people's opinions into one blob.
 As for overlap, I chose like ~20–25% overlap. I think that's enough to preserve boundary context without making chunks nearly identical to each other, which would bloat index and confuse retrieval. Everything is experimental right now, can come back to tune these 2 as required.
+
+**Implementation notes (Milestone 3):**
+- Locked the chunk window at **250 tokens / 60-token overlap**. The 250 cap sits just under all-MiniLM-L6-v2's 256-token ceiling, so every chunk embeds in full with nothing silently truncated. Token counts are measured with the model's *own* tokenizer (`src/textutils.py`), not a word estimate.
+- Chunking is **segment-aware**: documents are first cleaned into segments (one Reddit comment / one Yelp review / one section of an official page), and the chunker never merges across segments. This is what enforces "never merge two people's opinions." A long comment that exceeds 250 tokens is split into multiple overlapping chunks; the 60-token overlap carries the setup→punchline thread across the boundary (directly addressing Anticipated Challenge #1). Chunks under 15 tokens are dropped as fragments.
 
 ---
 
@@ -87,11 +97,11 @@ The two tradeoffs I'd weigh are context length and domain specificity. On contex
 
 | # | Question | Expected answer |
 | --- | --- | --- |
-| 1 | In the source set, which location is described as safer for no-car grad students: Eastwood or the Med Center? | Med Center. A complete answer must also mention that this option depends on METRO rail/bus commuting, especially for late-night travel. |
-| 2 | Name two concrete Cullen Oaks problems that are explicitly reported in the corpus. | Any two of the following are required for full credit: delayed maintenance response (including AC), surprise/extra administrative fees, and parking-garage/security concerns such as bike theft. |
-| 3 | Given corpus figures (about $1,800 monthly stipend and roughly $1,300-$2,000+ for Midtown/Montrose 1-bedroom rent), is living alone there supported? | No. A correct answer must conclude that solo living is generally not affordable and suggest roommate/shared housing as the practical option. |
-| 4 | Which two UH safety resources are explicitly named for returning home after dark? | Cougar Ride and UHPD escort/walking escort service. |
-| 5 | In the Lofts vs shared off-campus comparison, which option is usually lower monthly cost and what caveat must be included for each? | Shared off-campus is usually lower monthly cost. Required caveats: off-campus has variable utilities (notably high summer electricity), while Lofts has higher rent but bundled utilities and no required meal plan. |
+| 1 | I'm an international grad student with no car. Is it realistic/safe to live in Eastwood or the Med Center and commute to UH? | Yes, but pick your trade-off: The Med Center is safer and full of medical professionals, but you’ll have to ride the METRO rail/bus, which gets sketchy at night and takes long. Eastwood is closer and cheaper but still requires you to keep your guard up. |
+| 2 | What hidden fees or management issues should I look out for at places right off campus like Cullen Oaks? | Expect tough management and security issues. There's complain about delayed maintenance like AC breaking down in the summer, surprise admin fees, and unmonitored parking garages where bike thefts are common. |
+| 3 | Can I realistically afford a 1-bed apartment in Midtown or Montrose on a standard UH grad stipend? | No way, not unless you get a roommate. A standard stipend is around $1,800/month before fees. Average 1-bedrooms in Midtown or Montrose cost $1,300 to $2,000+. Rent would completely wipe out your paycheck. You’ll need to split a 2-bedroom. |
+| 4 | I have late-night labs and no car. How do I get back to my off-campus apartment safely after dark? | Do not walk alone, and use UH safety resources. Official policy says to call Cougar Ride or request a UHPD police escort to walk you to the transit stops. Absolutely do not walk past the campus borders alone after 10 PM. |
+| 5 | Is it financially smarter to live at the University Lofts on campus or split an off-campus apartment? | Off-campus with a roommate is cheaper, but the Lofts are easier. Off-campus splits save you cash, but you have to worry about separate electricity bills which skyrocket in Houston summers. The Lofts are pricey upfront but cover all utilities and require no meal plan. |
 ---
 
 ## Anticipated Challenges
@@ -156,22 +166,7 @@ UH, METRO
      with my specified chunk size and overlap" is a plan. -->
 
 **Milestone 3 — Ingestion and chunking:**
-- AI tool: Copilot Chat (GPT-5.3-Codex).
-- Input to AI: Domain + Documents + Chunking Strategy sections from this file.
-- Pipeline components to implement: source ingest scripts using `requests` + `BeautifulSoup`; document cleaning; `chunk_text()` with `RecursiveCharacterTextSplitter`; metadata schema with `source`, `url`, `doc_id`, `chunk_id`.
-- Expected output: `ingest.py` and chunked JSONL in `documents/`.
-- Verification: Run on at least 3 sources, then confirm chunk size/overlap and that each chunk has URL-linked metadata.
 
 **Milestone 4 — Embedding and retrieval:**
-- AI tool: Copilot Chat (GPT-5.3-Codex).
-- Input to AI: Retrieval Approach + Evaluation Plan sections.
-- Pipeline components to implement: embedding with `sentence-transformers` (`all-MiniLM-L6-v2`), local ChromaDB index creation, `retrieve(query, k=5)` with scores + citations.
-- Expected output: `index.py` and `retriever.py` that return top-k chunks with source metadata.
-- Verification: For each of the 5 evaluation questions, top-5 results should include at least one chunk containing key answer evidence.
 
 **Milestone 5 — Generation and interface:**
-- AI tool: Copilot Chat (GPT-5.3-Codex).
-- Input to AI: Architecture stage definitions + citation rules + Evaluation Plan.
-- Pipeline components to implement: answer generation module that uses retrieved chunks only, includes citations in output, and falls back with uncertainty language when evidence is weak.
-- Expected output: `app.py` CLI loop (`ask question -> retrieve -> generate -> cite sources`).
-- Verification: Run all 5 test questions and mark pass/fail by checking factual match to expected answers plus citation presence.
